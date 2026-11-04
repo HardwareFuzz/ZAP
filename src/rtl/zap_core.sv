@@ -568,7 +568,7 @@ begin
         2'b01   : alu_x_ppr = alu_x_result;     // CLZ
 
         // Saturation
-        2'b10   : alu_x_ppr = alu_flags_ff[27] ? // Overflow set ?
+        2'b10   : alu_x_ppr = alu_x_result[1] ? // Final arithmetic overflow?
                 ( alu_x_result[0] ? MIN_SAT : MAX_SAT ) :
                   alu_alu_result_ff ; // Pass on normal result.
         default : alu_x_ppr = {32{1'dx}};

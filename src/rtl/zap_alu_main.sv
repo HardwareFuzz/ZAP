@@ -290,7 +290,7 @@ module zap_alu_main #(
         // 0x0 - Take from alu_result.
         // 0x1 - CLZ output is presented on alt_result.
         // 0x2 - Potential overflow (Sign bit is present on LSB of alt_result).
-        //       See o_flags_ff[27] for overflow.
+        //       Final arithmetic overflow is in bit 1 of alt_result.
         output logic    [1:0]                     o_alt_dav_ff
 );
 
@@ -937,9 +937,11 @@ begin
         )
         begin
                 valid_x   = 2'd2;
+                // Carry final arithmetic overflow separately from sticky Q.
                 tmp_sum_x =  opcode == {1'd0, OP_QADD } ||
                              opcode == {1'd0, OP_QDADD} ?
-                             {31'd0, rm[31]} : {31'd0, rn[31]};
+                             {30'd0, arith_overflow, rm[31]} :
+                             {30'd0, arith_overflow, rn[31]};
         end
         else
         begin
