@@ -107,7 +107,7 @@ assign unused = |{pre_index};
 
 ///////////////////////////////////////////////////////////////////////////////
 
-enum logic [22:0] {
+enum logic [21:0] {
         IDLE            = 1 << 0 ,
         MEMOP           = 1 << 1 ,
         WRITE_PC        = 1 << 2 ,
@@ -129,8 +129,7 @@ enum logic [22:0] {
         DEP_WAIT_1      = 1 << 18 ,
         DEP_WAIT_2      = 1 << 19 ,
         DEP_WAIT_3      = 1 << 20 ,
-        LDRD_STRD_REG0  = 1 << 21 ,
-        LDRD_STRD_REG1  = 1 << 22 ,
+        LDRD_STRD_S2    = 1 << 21 ,
         `ZAP_DEFAULT_XX
 } state_ff, state_nxt;
 
@@ -273,111 +272,48 @@ begin:next_state_logic_and_output_logic
                         state_nxt               = IDLE;
                 end
 
-                LDRD_STRD_REG0, LDRD_STRD_REG1:
+                LDRD_STRD_S0, LDRD_STRD_S1:
                 begin
-                        // The effective address was saved before either transfer,
-                        // so loading a destination that aliases Rn cannot change it.
-                        o_instruction = '0;
-                        o_instruction[31:28] = cc;
-                        o_instruction[27:26] = 2'b01;
-                        o_instruction[24:23] = 2'b11; // Pre-indexed, positive immediate.
-                        o_instruction[20] = i_instruction[6:5] == 2'b10;
-                        {o_instruction[ZAP_BASE_EXTEND], o_instruction[`ZAP_BASE]} = ARCH_DUMMY_REG0;
-                        o_instruction[15:12] = i_instruction[15:12];
+                        // Transfer at the original base for post-indexing, or
+                        // at the saved offset address for pre-indexing. Neither
+                        // word transfer changes the architectural base.
+                        o_instruction[31:0] = {cc, 3'b010, 1'b1, 1'b1,
+                                              1'b0, 1'b0, !i_instruction[5],
+                                              base, i_instruction[15:12], 12'd0};
+                        if ( pre_index )
+                        begin
+                                {o_instruction[ZAP_BASE_EXTEND], o_instruction[`ZAP_BASE]}
+                                        = ARCH_DUMMY_REG0;
+                        end
 
-                        o_stall_from_decode = state_ff == LDRD_STRD_REG0;
-                        state_nxt = state_ff == LDRD_STRD_REG0 ? LDRD_STRD_REG1 : IDLE;
-                        if ( state_ff == LDRD_STRD_REG1 )
+                        o_stall_from_decode = 1'd1;
+                        state_nxt = LDRD_STRD_S1;
+
+                        if ( state_ff == LDRD_STRD_S1 )
                         begin
                                 o_instruction[15:12] = i_instruction[15:12] + 4'd1;
                                 o_instruction[11:0] = 12'd4;
-                        end
-                end
-
-                LDRD_STRD_S0:
-                begin
-                        o_stall_from_decode = 1'd0;
-
-                        o_instruction[31:28] = i_instruction[31:28];
-                        o_instruction[27:26] = 2'b01;
-                        o_instruction[15:12] = i_instruction[15:12] + 1;
-                        o_instruction[24:23] = i_instruction[24:23];
-                        o_instruction[19:16] = i_instruction[19:16];
-                        o_instruction[22]    = 1'd0;
-
-                        // If writeback was specified, generate LDR Rdata, [Raddress, #4] for the next load.
-                        // Make it pre-indexing without writeback in this case.
-                        if ( i_instruction[21] )
-                        begin
-                                o_instruction[11:0] = 12'd4;
-                                o_instruction[25]   = 1'd1;
-                                o_instruction[21]   = 1'd0;
-                        end
-                        else // No writeback.
-                        begin
-                                if ( i_instruction[22] )
+                                if ( !pre_index || writeback )
                                 begin
-                                        // If no writeback was specified, issue +4 to immediate (for I mode) for the next
-                                        // address.
-                                        o_instruction[11:0]  = o_instruction[11:0] + 12'd4;
-                                        o_instruction[25]    = 1'd1;
-                                        state_nxt            = IDLE;
+                                        state_nxt = LDRD_STRD_S2;
                                 end
                                 else
                                 begin
-
-                                        // If no writeback was specified and in register mode, issue + 4 to the register.
-                                        // This requires the register to be temporarily added by 4.
-                                        // 1.
-                                        // Generate ADDAL ARCH_DUMMY_REG0, Register, #4
-
-                                        o_instruction[31:0] =
-                                        {AL, 2'b00, 1'b1, ADD, 1'd0, 4'd0, i_instruction[19:16], 12'd4};
-
-                                        {o_instruction[ZAP_DP_RD_EXTEND], o_instruction[`ZAP_DP_RD]}= ARCH_DUMMY_REG0;
-
-                                        state_nxt = LDRD_STRD_S1;
-
-                                        o_stall_from_decode = 1'd1;
-
+                                        o_stall_from_decode = 1'd0;
+                                        state_nxt = IDLE;
                                 end
-                        end
-
-                        if ( i_instruction[6:5] == 2'b11 )
-                        begin
-                                o_instruction[20] = 1'd0;       // Store
-                        end
-                        else
-                        begin
-                                o_instruction[20] = 1'd1;       // Load
                         end
                 end
 
-                LDRD_STRD_S1:
+                LDRD_STRD_S2:
                 begin
-                        o_stall_from_decode  = 1'd0;
-                        o_instruction[31:28] = i_instruction[31:28];
-
-                        // Use arch dummy reg0 as the base address since it was incremented by 4.
-                        o_instruction[15:12] = i_instruction[15:12] + 1;
-                        o_instruction[27:26] = 2'b01;
-                        o_instruction[25]    = 1'd0;
-                        o_instruction[11:0]  = i_instruction[11:0];
-                        o_instruction[24:23] = i_instruction[24:23];
-                        o_instruction[22]    = 1'd0;
-                        o_instruction[21]    = i_instruction[21];
-                        o_instruction[15:12] = i_instruction[15:12];
-                        {o_instruction[ZAP_DP_RA_EXTEND], o_instruction[`ZAP_DP_RA]} = ARCH_DUMMY_REG0;
-
-                        if ( i_instruction[6:5] == 2'b11 )
-                        begin
-                                o_instruction[20] = 1'd0;       // Store
-                        end
-                        else
-                        begin
-                                o_instruction[20] = 1'd1;       // Load
-                        end
-
+                        // Post-indexing always writes back, even with W clear.
+                        // MOV Rn, DUMMY0 leaves the flags unchanged.
+                        o_instruction[31:0] = {cc, 2'b00, 1'b0, MOV, 1'b0,
+                                              4'd0, base, 12'd0};
+                        {o_instruction[ZAP_DP_RB_EXTEND], o_instruction[`ZAP_DP_RB]}
+                                = ARCH_DUMMY_REG0;
+                        o_stall_from_decode = 1'd0;
                         state_nxt = IDLE;
                 end
 
@@ -445,64 +381,25 @@ begin:next_state_logic_and_output_logic
                              i_instruction[4]     == 1'd1                                   &&
                              i_instruction_valid )
                         begin
-                                // If writeback is specified, the address of the second load is the writeback value
-                                // with 4 added to it. The written back value holds the result of executing the
-                                // first load.
-                                //
-                                // If writeback is not specified, the address of the second load is 4 more than the
-                                // address of the first load.
+                                // Save Rn +/- offset before either transfer can
+                                // overwrite an input register. Addressing mode 3
+                                // has an unsigned imm8 or an unshifted Rm.
+                                o_instruction[31:0] = {cc, 2'b00, i_instruction[22],
+                                                       up ? ADD : SUB, 1'b0,
+                                                       base, 4'd0, 12'd0};
+                                {o_instruction[ZAP_DP_RD_EXTEND], o_instruction[`ZAP_DP_RD]}
+                                        = ARCH_DUMMY_REG0;
+                                if ( i_instruction[22] )
+                                begin
+                                        o_instruction[7:0] = {i_instruction[11:8], i_instruction[3:0]};
+                                end
+                                else
+                                begin
+                                        o_instruction[3:0] = i_instruction[3:0];
+                                end
 
                                 o_stall_from_decode = 1'd1;
-
-                                o_instruction[27:26] = 2'b01;  // Make it an classic load-store.
-
-                                // Specify addressing mode.
-                                if ( i_instruction[22] ) // Immediate.
-                                begin
-                                        o_instruction[25]    = 1'd1;
-                                        o_instruction[11:0]  = $signed({i_instruction[11],
-                                                                        i_instruction[11],
-                                                                        i_instruction[11],
-                                                                        i_instruction[11],
-                                                                        i_instruction[11:8],
-                                                                        i_instruction[3:0]});
-                                end
-                                else
-                                begin
-                                        o_instruction[25]    = 1'd0;
-                                        o_instruction[11:0]  = i_instruction[11:0];
-                                end
-
-                                o_instruction[24:23] = i_instruction[24:23];
-                                o_instruction[22]    = 1'd0;
-                                o_instruction[21]    = i_instruction[21];
-
-                                // Load or Store.
-                                if ( i_instruction[6:5] == 2'b11 )
-                                begin
-                                        o_instruction[20] = 1'd0;       // Store
-                                end
-                                else
-                                begin
-                                        o_instruction[20] = 1'd1;       // Load
-                                end
-
-                                o_instruction[19:12] = i_instruction[19:12];
-
-                                state_nxt            = LDRD_STRD_S0;
-
-                                if ( !i_instruction[22] && i_instruction[24] && !i_instruction[21] )
-                                begin
-                                        // Register offset without writeback: save Rn +/- Rm
-                                        // before loading either destination. Keep the predicate
-                                        // and do not update flags during address calculation.
-                                        o_instruction = '0;
-                                        o_instruction[31:0] = {cc, 2'b00, 1'b0,
-                                                (i_instruction[23] ? ADD : SUB), 1'b0,
-                                                i_instruction[19:16], 4'd0, 8'd0, i_instruction[3:0]};
-                                        {o_instruction[ZAP_DP_RD_EXTEND], o_instruction[`ZAP_DP_RD]} = ARCH_DUMMY_REG0;
-                                        state_nxt = LDRD_STRD_REG0;
-                                end
+                                state_nxt = LDRD_STRD_S0;
 
                                 // Fine to give IRQs.
                                 o_irq = i_irq;
