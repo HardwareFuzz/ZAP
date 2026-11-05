@@ -576,6 +576,30 @@ begin
 end
 
 
+// CLZ and saturating arithmetic obtain their architectural result after the
+// ALU. Interlock dependencies until that value reaches post-ALU; the earlier
+// ALU forwarding ports contain the ordinary, unprocessed sum.
+function automatic logic late_result(input logic [$clog2(ALU_OPS)-1:0] op);
+        late_result = op == {1'd0, CLZ}      ||
+                      op == {1'd0, OP_QADD}  ||
+                      op == {1'd0, OP_QSUB}  ||
+                      op == {1'd0, OP_QDADD} ||
+                      op == {1'd0, OP_QDSUB};
+endfunction
+
+logic [63:0] issue_result_lock;
+
+always_comb
+begin
+        issue_result_lock = i_dc_lock;
+        if ( issue_condition_code_ff != NV && late_result(issue_alu_operation_ff) )
+                issue_result_lock[issue_destination_index_ff] = 1'd1;
+        if ( shifter_condition_code_ff != NV && late_result(shifter_alu_operation_ff) )
+                issue_result_lock[shifter_destination_index_ff] = 1'd1;
+        if ( alu_dav_ff && (|alu_x_valid) )
+                issue_result_lock[alu_destination_index_ff] = 1'd1;
+end
+
 /////////////////////////////////
 // Instantiations
 /////////////////////////////////
@@ -905,7 +929,7 @@ u_zap_issue_main
         .i_rd_data_3                    (rd_data_3),
 
         // Feedback.
-        .i_dc_lock                      (i_dc_lock),
+        .i_dc_lock                      (issue_result_lock),
         .i_shifter_destination_index_ff (shifter_destination_index_ff),
         .i_alu_destination_index_ff     (alu_destination_index_ff),
         .i_memory_destination_index_ff  (memory_destination_index_ff),
