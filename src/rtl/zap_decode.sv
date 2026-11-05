@@ -245,7 +245,7 @@ begin
                         o_flag_update       = 1'd1;
 
                         o_alu_operation = ((instruction[22:21] == 2'b01) && instruction[5] && instruction[15:12] == 0) ?
-                                          (instruction[6] ? OP_SMULW0 : OP_SMULW1) :
+                                          (instruction[6] ? OP_SMULW1 : OP_SMULW0) :
                                           (instruction[6:5] == 2'b00 ? OP_SMUL00 :
                                            instruction[6:5] == 2'b01 ? OP_SMUL01 :
                                            instruction[6:5] == 2'b10 ? OP_SMUL10 :
