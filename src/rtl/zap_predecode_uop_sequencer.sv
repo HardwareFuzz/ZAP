@@ -522,7 +522,8 @@ begin:next_state_logic_and_output_logic
                         else if (  i_instruction[27:23] == 5'b00010 &&
                                    i_instruction[22:21] == 2'b10    &&
                                   !i_instruction[20]                &&
-                                   i_instruction[7] && i_instruction[4] )
+                                   i_instruction[7] && !i_instruction[4] &&
+                                   i_instruction_valid )
                         begin
                                 // LMULT
                                 state_nxt = LMULT_BUSY;
