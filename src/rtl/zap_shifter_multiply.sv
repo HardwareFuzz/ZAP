@@ -164,25 +164,25 @@ begin
         end
         else if ( i_alu_operation_ff == OP_SMULW0 )
         begin
-                // Signed RM x Lower RS
+                // Architectural Rm is i_rs; multiply by the low half of Rs (i_rm).
 
-                a <= $signed({i_rm[31], i_rm[31:16]});
-                c <= $signed({1'd0, i_rm[15:0]});
+                a <= $signed({i_rs[31], i_rs[31:16]});
+                c <= $signed({1'd0, i_rs[15:0]});
 
-                b <= $signed({17{i_rs[15]}});
-                d <= $signed({1'd0, i_rs[15:0]});
+                b <= $signed({17{i_rm[15]}});
+                d <= $signed({1'd0, i_rm[15:0]});
 
                 take_upper <= 1'd1;
         end
         else if ( i_alu_operation_ff == OP_SMULW1 )
         begin
-                // Signed RM x Upper RS
+                // Architectural Rm is i_rs; multiply by the high half of Rs (i_rm).
 
-                a <= $signed({i_rm[31], i_rm[31:16]});
-                c <= $signed({1'd0, i_rm[15:0]});
+                a <= $signed({i_rs[31], i_rs[31:16]});
+                c <= $signed({1'd0, i_rs[15:0]});
 
-                b <= $signed({17{i_rs[31]}});
-                d <= $signed({1'd0, i_rs[31:16]});
+                b <= $signed({17{i_rm[31]}});
+                d <= $signed({1'd0, i_rm[31:16]});
 
                 take_upper <= 1'd1;
         end
