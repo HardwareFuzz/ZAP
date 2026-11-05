@@ -593,11 +593,17 @@ always_comb
 begin
         issue_result_lock = i_dc_lock;
         if ( issue_condition_code_ff != NV && late_result(issue_alu_operation_ff) )
+        begin
                 issue_result_lock[issue_destination_index_ff] = 1'd1;
+        end
         if ( shifter_condition_code_ff != NV && late_result(shifter_alu_operation_ff) )
+        begin
                 issue_result_lock[shifter_destination_index_ff] = 1'd1;
+        end
         if ( alu_dav_ff && (|alu_x_valid) )
+        begin
                 issue_result_lock[alu_destination_index_ff] = 1'd1;
+        end
 end
 
 /////////////////////////////////
